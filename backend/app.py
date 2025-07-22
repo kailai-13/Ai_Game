@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import json
+from dotenv import load_dotenv
+load_dotenv()
 import os
 from typing import Dict, List, Any
 
@@ -9,7 +11,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Groq API configuration
-GROQ_API_KEY = os.getenv('GROQ_API_KEY', 'your-groq-api-key-here')
+GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 
 def call_groq_api(prompt: str) -> str:
