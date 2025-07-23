@@ -271,12 +271,8 @@ function App() {
           </p>
         </div>
 
-        {/* Connection Status */}
-        <div className="bg-yellow-100 border-2 border-yellow-300 rounded-lg p-3 mb-6 mx-2 sm:mx-0">
-          <p className="text-yellow-800 text-sm font-medium text-center">
-            🔗 Connected to API: {API_BASE_URL}
-          </p>
-        </div>
+        
+
 
         {/* Word Input Section */}
         <div className="bg-white rounded-lg sm:rounded-xl shadow-lg p-4 sm:p-6 mb-6 sm:mb-8 border border-gray-200 mx-2 sm:mx-0">
