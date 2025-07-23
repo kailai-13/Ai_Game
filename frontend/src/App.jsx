@@ -9,81 +9,60 @@ const GAME_TYPES = [
   { value: 'guided_completion', label: 'Guided Word Completion' }
 ];
 
-// Mock API function for demo purposes (since localhost API won't work in artifacts)
-const mockGenerateGames = async (words) => {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 1500));
-  
-  return {
-    results: words.map(wordItem => {
-      const { word, game_type } = wordItem;
-      
-      switch (game_type) {
-        case 'multiple_choice_spelling':
-          return {
-            word,
-            game_type,
-            game_data: {
-              options: [word, word.slice(0, -1) + 'x', word.slice(0, -2) + 'yz', word + 's'],
-              correct: word
-            }
-          };
-          
-        case 'suffix_completion':
-          const baseWord = word.slice(0, Math.max(3, word.length - 3));
-          const suffix = word.slice(baseWord.length);
-          return {
-            word,
-            game_type,
-            game_data: {
-              base_word: baseWord,
-              options: [suffix, suffix + 'x', 'ing', 'ed'],
-              correct_suffix: suffix
-            }
-          };
-          
-        case 'fill_blanks':
-          const blankedWord = word.split('').map((char, i) => 
-            i === Math.floor(word.length / 2) || i === Math.floor(word.length / 3) ? '_' : char
-          ).join('');
-          return {
-            word,
-            game_type,
-            game_data: {
-              blanked_word: blankedWord,
-              options: [word, word.slice(0, -1) + 'x', word + 'y', word.slice(1)],
-              correct_answer: word
-            }
-          };
-          
-        case 'error_detection':
-          const misspelled = word.slice(0, -1) + (word.slice(-1) === 'e' ? 'a' : 'e');
-          return {
-            word,
-            game_type,
-            game_data: {
-              misspelled_word: misspelled,
-              original_word: word
-            }
-          };
-          
-        case 'guided_completion':
-          const incomplete = word.slice(0, -2) + '__';
-          return {
-            word,
-            game_type,
-            game_data: {
-              incomplete_word: incomplete,
-              hint: `This word ends with "${word.slice(-2)}"`,
-              correct_completion: word
-            }
-          };
-          
-        default:
-          return { word, game_type, game_data: {} };
-      }
-    })
-  };
+// Real API configuration
+const API_BASE_URL = 'http://localhost:5000'; // Change this to your actual backend URL
+
+// Real API function to generate all games
+const generateGames = async (words) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/generate-all-games`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        words: words
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('API Error:', error);
+    throw error;
+  }
+};
+
+// Function to generate a single game (if needed)
+const generateSingleGame = async (word, gameType) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/generate-game`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        word: word,
+        game_type: gameType
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('API Error:', error);
+    throw error;
+  }
 };
 
 function App() {
@@ -124,16 +103,24 @@ function App() {
     setGameResults([]);
 
     try {
-      // Using mock API for demo
-      const data = await mockGenerateGames(validWords.map(w => ({
+      // Make real API call
+      const data = await generateGames(validWords.map(w => ({
         word: w.word.trim(),
         game_type: w.gameType
       })));
       
-      setGameResults(data.results || []);
+      if (data.results && data.results.length > 0) {
+        setGameResults(data.results);
+      } else {
+        setError('No games were generated. Please check your words and try again.');
+      }
     } catch (error) {
       console.error('Error generating games:', error);
-      setError('Failed to generate games. Please try again.');
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        setError('Unable to connect to the server. Please make sure the backend is running on http://localhost:5000');
+      } else {
+        setError(`Failed to generate games: ${error.message}`);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -284,6 +271,13 @@ function App() {
           </p>
         </div>
 
+        {/* Connection Status */}
+        <div className="bg-yellow-100 border-2 border-yellow-300 rounded-lg p-3 mb-6 mx-2 sm:mx-0">
+          <p className="text-yellow-800 text-sm font-medium text-center">
+            🔗 Connected to API: {API_BASE_URL}
+          </p>
+        </div>
+
         {/* Word Input Section */}
         <div className="bg-white rounded-lg sm:rounded-xl shadow-lg p-4 sm:p-6 mb-6 sm:mb-8 border border-gray-200 mx-2 sm:mx-0">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-3 sm:gap-4">
@@ -368,6 +362,16 @@ function App() {
           <div className="bg-red-100 border-2 border-red-300 text-red-800 px-4 sm:px-6 py-3 sm:py-4 rounded-lg mb-6 sm:mb-8 font-medium mx-2 sm:mx-0">
             <p className="font-bold text-sm sm:text-base">Error:</p>
             <p className="text-sm sm:text-base">{error}</p>
+            {error.includes('connect to the server') && (
+              <div className="mt-2 text-sm">
+                <p className="font-semibold">Troubleshooting steps:</p>
+                <ul className="list-disc list-inside mt-1 space-y-1">
+                  <li>Make sure your Flask backend is running: <code className="bg-red-200 px-1 rounded">python app.py</code></li>
+                  <li>Verify the backend is accessible at: <code className="bg-red-200 px-1 rounded">{API_BASE_URL}</code></li>
+                  <li>Check that CORS is properly configured in your Flask app</li>
+                </ul>
+              </div>
+            )}
           </div>
         )}
 
