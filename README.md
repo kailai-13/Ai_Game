@@ -42,7 +42,7 @@ Before running this application, make sure you have:
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/kailai-13/Ai_Game/new/main?filename=README.md
+git clone https://github.com/kailai-13/Ai_Game
 cd word-learning-games
 ```
 
