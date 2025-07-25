@@ -193,32 +193,33 @@ Do not include any other text or explanations."""
     }
 
 def generate_suffix_completion(word: str) -> Dict[str, Any]:
-    """Generate suffix completion challenge with confusing suffixes"""
+    """Generate suffix completion challenge with tempting, human-like suffixes"""
     if len(word) <= 4:
         base_word = word[:-2] if len(word) > 2 else word[:-1]
     else:
         base_word = word[:-3]
-    
+
     correct_suffix = word[len(base_word):]
-    
-    prompt = f"""Create a suffix completion challenge for the word "{word}".
+
+    prompt = f"""You are a language tutor.
+
+Create a suffix-completion challenge for the word "{word}".
 The base word is "{base_word}" and the correct suffix is "{correct_suffix}".
 
-Generate 3 confusing but plausible suffix options that could trick players:
-- Use common suffix confusions: -tion/-sion, -able/-ible, -ous/-ious, -ent/-ant
-- Make them phonetically similar or commonly confused
-- Ensure they sound reasonable with the base word
+Generate 3 **tempting but wrong** suffixes that:
+- Are real suffixes used in English
+- Are commonly confused in spelling (-tion vs -sion, -able vs -ible, etc.)
+- Are close in sound or appearance to the correct one
+- Could realistically complete the base word, but are wrong
 
-Return ONLY the suffix options, not complete words.
-
-Respond with ONLY valid JSON in this exact format:
+✅ Output only valid JSON in this format:
 {{
     "base_word": "{base_word}",
     "correct_suffix": "{correct_suffix}",
-    "options": ["{correct_suffix}", "confusing_suffix1", "confusing_suffix2", "confusing_suffix3"]
+    "options": ["{correct_suffix}", "wrong_suffix1", "wrong_suffix2", "wrong_suffix3"]
 }}
 
-Do not include any other text or explanations."""
+No explanations. No extra text. Only JSON."""
     
     response = call_groq_api(prompt)
     if response:
@@ -228,54 +229,50 @@ Do not include any other text or explanations."""
                 cleaned_response = cleaned_response.replace('```json', '').replace('```', '')
             
             result = json.loads(cleaned_response)
-            # Ensure we only return suffixes, not full words
-            result['options'] = [opt if not opt.startswith(base_word) else opt[len(base_word):] for opt in result['options']]
+            result['options'] = [suffix.strip() for suffix in result['options']]
             return result
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error for suffix completion '{word}': {e}")
             logger.error(f"Response was: {response}")
 
-    
-    # Enhanced fallback with confusing suffixes
-    confusing_suffixes = []
-    
-    # Common suffix confusions
-    if correct_suffix.endswith('tion'):
-        confusing_suffixes = ['sion', 'cion', 'ation']
-    elif correct_suffix.endswith('sion'):
-        confusing_suffixes = ['tion', 'cion', 'ssion']
-    elif correct_suffix.endswith('able'):
-        confusing_suffixes = ['ible', 'eable', 'uble']
-    elif correct_suffix.endswith('ible'):
-        confusing_suffixes = ['able', 'eable', 'uble']
-    elif correct_suffix.endswith('ous'):
-        confusing_suffixes = ['ious', 'eous', 'uous']
-    elif correct_suffix.endswith('ant'):
-        confusing_suffixes = ['ent', 'int', 'unt']
-    elif correct_suffix.endswith('ent'):
-        confusing_suffixes = ['ant', 'int', 'unt']
-    else:
-        # Generic confusing options
-        confusing_suffixes = ['ing', 'ed', 'er', 'est', 'ly', 'ion']
-    
-    # Filter out suffixes that are too long compared to the correct one
-    confusing_suffixes = [suffix for suffix in confusing_suffixes[:3] if len(suffix) <= len(correct_suffix) + 2]
-    
-    # Fill up to 3 options if needed
+    # 🧠 Better fallback logic
+    fallback_map = {
+        'tion': ['sion', 'cion', 'tian'],
+        'sion': ['tion', 'ssion', 'cion'],
+        'able': ['ible', 'eable', 'uble'],
+        'ible': ['able', 'eable', 'uble'],
+        'ous': ['ious', 'eous', 'us'],
+        'ious': ['ous', 'eous', 'iouss'],
+        'ant': ['ent', 'int', 'unt'],
+        'ent': ['ant', 'int', 'end'],
+        'ive': ['ative', 'ivee', 'eive'],
+        'al': ['el', 'le', 'il'],
+    }
+
+    correct_suffix_lower = correct_suffix.lower()
+    confusing_suffixes = fallback_map.get(correct_suffix_lower, ['ing', 'er', 'ly', 'est', 'ment'])
+
+    # Ensure no duplicates and correct_suffix is not included in wrong ones
+    confusing_suffixes = [s for s in confusing_suffixes if s != correct_suffix_lower][:3]
+
     while len(confusing_suffixes) < 3:
-        confusing_suffixes.append(random.choice(['ing', 'ed', 'er', 'ly', 'ion']))
-    
+        extra = random.choice(['ence', 'ance', 'ary', 'ory', 'ive', 'ure'])
+        if extra not in confusing_suffixes and extra != correct_suffix_lower:
+            confusing_suffixes.append(extra)
+
     options = [correct_suffix] + confusing_suffixes[:3]
     random.shuffle(options)
-    
+
     return {
         "base_word": base_word,
         "correct_suffix": correct_suffix,
         "options": options[:4]
     }
 
+
+
 def generate_fill_blanks(word: str) -> Dict[str, Any]:
-    """Generate fill in the blanks challenge with exactly 2 consecutive letters"""
+    """Generate fill-in-the-blanks challenge with realistic and tempting wrong 2-letter combinations"""
     if len(word) < 3:
         return {
             "blanked_word": word,
@@ -283,105 +280,80 @@ def generate_fill_blanks(word: str) -> Dict[str, Any]:
             "missing_letters": word[-1:],
             "options": [word[-1:], "s", "e", "d"]
         }
-    
-    # Find the best position for 2 consecutive blanks
-    # Prioritize positions that contain common problem areas
+
     problem_patterns = ['ie', 'ei', 'ou', 'ea', 'oo', 'ee', 'ss', 'll', 'nn', 'mm', 'tt']
-    
-    # Look for problem patterns first
     best_position = 0
     for pattern in problem_patterns:
         pos = word.lower().find(pattern)
         if pos != -1 and pos + 2 <= len(word):
             best_position = pos
             break
-    
-    # If no problem patterns found, choose a position avoiding start and end
     if best_position == 0:
-        if len(word) >= 4:
-            best_position = random.randint(1, len(word) - 3)
-        else:
-            best_position = 0
-    
-    # Create blanked word with exactly 2 consecutive blanks
+        best_position = random.randint(1, len(word) - 3) if len(word) >= 4 else 0
+
     blanked_word = word[:best_position] + "__" + word[best_position + 2:]
     missing_letters = word[best_position:best_position + 2].lower()
-    
+
     prompt = f"""Create a fill-in-the-blanks challenge for the word "{word}".
-The blanked version is "{blanked_word}" where the missing letters are "{missing_letters}".
+The blanked version is "{blanked_word}" and the missing letters are "{missing_letters}".
 
-Generate 3 tempting but incorrect 2-letter combinations that could plausibly fill the blanks:
-- Use common letter combinations that sound similar
-- Include common misspelling patterns (ei/ie, ou/ow, etc.)
-- Make them phonetically reasonable
+Generate 3 wrong but very tempting 2-letter combinations:
+- Use phonetically or visually confusing pairs
+- Include real English letter pairs that are common in the same position
+- Include commonly mistaken spellings
+- Do NOT include nonsense combinations
 
-Return ONLY the 2-letter combinations, NOT complete words.
-
-Respond with ONLY valid JSON in this exact format:
+Respond with only valid JSON:
 {{
     "blanked_word": "{blanked_word}",
     "correct_answer": "{word}",
     "missing_letters": "{missing_letters}",
     "options": ["{missing_letters}", "wrong_combo1", "wrong_combo2", "wrong_combo3"]
-}}
+}}"""
 
-Do not include any other text or explanations."""
-    
     response = call_groq_api(prompt)
     if response:
         try:
             cleaned_response = response.strip()
             if cleaned_response.startswith('```json'):
                 cleaned_response = cleaned_response.replace('```json', '').replace('```', '').strip()
-                
+            
             result = json.loads(cleaned_response)
-            # Ensure options are only 2-letter combinations
-            result['options'] = [opt[:2] if len(opt) >= 2 else opt for opt in result['options']]
+            result['options'] = [opt[:2] for opt in result['options'] if len(opt) >= 2]
             return result
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error for fill blanks '{word}': {e}")
-    
-    # Enhanced fallback with confusing letter combinations
-    confusing_combos = []
-    
-    # Common confusions based on the missing letters
-    if missing_letters == 'ie':
-        confusing_combos = ['ei', 'ea', 'ee']
-    elif missing_letters == 'ei':
-        confusing_combos = ['ie', 'ai', 'ea']
-    elif missing_letters == 'ou':
-        confusing_combos = ['ow', 'oo', 'au']
-    elif missing_letters == 'ea':
-        confusing_combos = ['ee', 'ie', 'ai']
-    elif missing_letters == 'oo':
-        confusing_combos = ['ou', 'ew', 'ue']
-    else:
-        # Generic confusing combinations
-        vowels = ['a', 'e', 'i', 'o', 'u']
-        consonants = ['n', 's', 't', 'r', 'l']
-        confusing_combos = [
-            random.choice(vowels) + random.choice(vowels),
-            random.choice(consonants) + random.choice(consonants),
-            random.choice(vowels) + random.choice(consonants)
-        ]
-    
-    # Ensure all combinations are exactly 2 letters
-    confusing_combos = [combo[:2] for combo in confusing_combos if len(combo) >= 2][:3]
-    
-    # Fill up if needed
+
+    # ✨ Better fallback with human-mistakable combos
+    pairs_map = {
+        'ie': ['ei', 'ea', 'ee'],
+        'ei': ['ie', 'ai', 'ea'],
+        'ou': ['ow', 'oo', 'au'],
+        'ea': ['ee', 'ie', 'ai'],
+        'oo': ['ou', 'ew', 'ue'],
+        'ss': ['zz', 'll', 'sh'],
+        'll': ['tt', 'ss', 'nn'],
+        'mm': ['nn', 'rm', 'mn'],
+        'tt': ['dd', 'll', 'pp'],
+    }
+
+    confusing_combos = pairs_map.get(missing_letters, [])
+
     while len(confusing_combos) < 3:
-        confusing_combos.append(random.choice(['ai', 'ou', 'ee', 'oo', 'ar', 'er']))
-    
-    # Return only the letter combinations, not full words
+        extra = random.choice(['ai', 'ow', 'er', 'ar', 'en', 'on'])
+        if extra not in confusing_combos and extra != missing_letters:
+            confusing_combos.append(extra)
+
     options = [missing_letters] + confusing_combos[:3]
     random.shuffle(options)
-    
+
     return {
         "blanked_word": blanked_word,
         "correct_answer": word,
         "missing_letters": missing_letters,
         "options": options[:4]
     }
+
 
 
 def generate_error_detection(word: str) -> Dict[str, Any]:
