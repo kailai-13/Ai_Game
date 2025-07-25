@@ -79,22 +79,73 @@ def call_groq_api(prompt: str) -> str:
         logger.error(f"Unexpected error calling Groq API: {e}")
         return ""
 
+def create_human_like_misspellings(word: str) -> List[str]:
+    """Create realistic human-like misspellings"""
+    misspellings = []
+    word_lower = word.lower()
+    
+    # Common letter swaps
+    common_swaps = [('ie', 'ei'), ('ei', 'ie'), ('ph', 'f'), ('gh', 'g'), ('ck', 'k')]
+    for original, replacement in common_swaps:
+        if original in word_lower:
+            misspelling = word_lower.replace(original, replacement, 1)
+            if misspelling != word_lower:
+                misspellings.append(misspelling)
+    
+    # Double letter mistakes
+    for i in range(len(word_lower) - 1):
+        if word_lower[i] == word_lower[i + 1]:  # Remove double letter
+            misspelling = word_lower[:i] + word_lower[i + 1:]
+            misspellings.append(misspelling)
+        else:  # Add double letter
+            misspelling = word_lower[:i + 1] + word_lower[i] + word_lower[i + 1:]
+            misspellings.append(misspelling)
+    
+    # Silent letter removal
+    silent_patterns = ['k', 'b', 'w', 'h', 'l', 't']
+    for letter in silent_patterns:
+        if letter in word_lower:
+            misspelling = word_lower.replace(letter, '', 1)
+            if len(misspelling) >= 3 and misspelling != word_lower:
+                misspellings.append(misspelling)
+    
+    # Vowel confusion
+    vowel_swaps = [('a', 'e'), ('e', 'i'), ('i', 'o'), ('o', 'u'), ('u', 'a')]
+    for original, replacement in vowel_swaps:
+        if original in word_lower:
+            misspelling = word_lower.replace(original, replacement, 1)
+            if misspelling != word_lower:
+                misspellings.append(misspelling)
+    
+    # Phonetic mistakes
+    phonetic_swaps = [('c', 'k'), ('s', 'c'), ('f', 'ph'), ('j', 'g')]
+    for original, replacement in phonetic_swaps:
+        if original in word_lower:
+            misspelling = word_lower.replace(original, replacement, 1)
+            if misspelling != word_lower:
+                misspellings.append(misspelling)
+    
+    # Return unique misspellings, limit to avoid too many options
+    unique_misspellings = list(set(misspellings))
+    return unique_misspellings[:6]  # Return up to 6 options
+
 def generate_multiple_choice_spelling(word: str) -> Dict[str, Any]:
     """Generate multiple choice spelling challenge with human-like mistakes"""
     prompt = f"""Create a multiple choice spelling challenge for the word "{word}".
 
-Generate 3 very tempting misspellings that humans would commonly make and that look almost correct:
-- Make them sound identical when spoken
-- Use the most common spelling mistakes for this specific word
-- Make them visually similar to the correct spelling
-- Focus on the parts of the word that are most commonly misspelled
+Generate 3 realistic misspellings that humans commonly make. Focus on:
+- Common letter confusions (ei/ie, ph/f, c/k, s/c)
+- Double letter mistakes (adding or removing doubles)
+- Silent letter errors
+- Vowel confusions
+- Phonetic mistakes
 
-For example, if the word is "beautiful", wrong options could be "beatiful", "beautifull", "beutiful"
+Make the mistakes subtle and tempting - they should look plausible.
 
 Respond with ONLY valid JSON in this exact format:
 {{
     "correct": "{word}",
-    "options": ["{word}", "tempting_misspelling1", "tempting_misspelling2", "tempting_misspelling3"]
+    "options": ["correct_spelling", "realistic_misspelling1", "realistic_misspelling2", "realistic_misspelling3"]
 }}
 
 Do not include any other text or explanations."""
@@ -111,141 +162,34 @@ Do not include any other text or explanations."""
             logger.error(f"JSON decode error for word '{word}': {e}")
             logger.error(f"Response was: {response}")
 
-
-    # Enhanced fallback with very tempting, human-like mistakes
-    word_lower = word.lower()
-    tempting_mistakes = set() # Use a set to automatically handle duplicates
+    # Enhanced fallback with human-like mistakes
+    misspellings = create_human_like_misspellings(word)
+    options = [word] + misspellings[:3]
     
-    # Create specific tempting misspellings based on common patterns
-    
-    # 1. Double letter confusions
-    for i in range(len(word_lower) - 1):
-        if word_lower[i] != word_lower[i + 1]:  # Add double letter
-            mistake = word_lower[:i + 1] + word_lower[i] + word_lower[i + 1:]
-            if len(mistake) <= len(word_lower) + 1: # Avoid excessively long words
-                tempting_mistakes.add(mistake)
-        elif word_lower[i] == word_lower[i + 1]:  # Remove double letter
-            mistake = word_lower[:i] + word_lower[i + 1:]
-            if len(mistake) >= 3: # Avoid too short words
-                tempting_mistakes.add(mistake)
-    
-    # 2. Common vowel confusions that sound similar
-    vowel_confusions = [
-        ('ie', 'ei'), ('ei', 'ie'),  # receive/recieve
-        ('ea', 'ee'), ('ee', 'ea'),  # breath/breathe
-        ('ou', 'ow'), ('ow', 'ou'),  # through/throw
-        ('ai', 'ay'), ('ay', 'ai'),  # main/mayn
-        ('au', 'aw'), ('aw', 'au'),  # cause/caws
-        ('e', 'a'), ('a', 'e'), # separate/seperate
-        ('o', 'a'), ('a', 'o'), # familiar/familar
-    ]
-    
-    for original, replacement in vowel_confusions:
-        if original in word_lower:
-            # Replace only the first occurrence for distinct mistakes
-            mistake = word_lower.replace(original, replacement, 1)
-            if mistake != word_lower:
-                tempting_mistakes.add(mistake)
-    
-    # 3. Silent letter mistakes (removing or adding a common silent letter)
-    silent_letter_patterns = {
-        'kn': 'n', 'wr': 'r', 'mb': 'm', 'bt': 't', # Remove silent letter
-        'ght': 'gt', # Common reduction
-        'dge': 'ge', # Common reduction
-        'tch': 'ch', # Common reduction
-    }
-    
-    for pattern, replacement in silent_letter_patterns.items():
-        if pattern in word_lower:
-            mistake = word_lower.replace(pattern, replacement, 1)
-            if mistake != word_lower and len(mistake) >= 3:
-                tempting_mistakes.add(mistake)
-    
-    # Adding silent letters where they don't belong (simple cases)
-    if not word_lower.endswith('e') and len(word_lower) > 2:
-        tempting_mistakes.add(word_lower + 'e') # Add silent 'e'
-    
-    # 4. Common ending confusions
-    ending_confusions = [
-        ('ful', 'full'), ('full', 'ful'),
-        ('ly', 'ley'), ('ley', 'ly'),
-        ('ance', 'ence'), ('ence', 'ance'),
-        ('ant', 'ent'), ('ent', 'ant'),
-        ('tion', 'sion'), ('sion', 'tion'),
-        ('able', 'ible'), ('ible', 'able'),
-        ('ous', 'ious'), ('ious', 'ous'),
-        ('ment', 'mant'), ('ment', 'munt'),
-    ]
-    
-    for original, replacement in ending_confusions:
-        if word_lower.endswith(original):
-            mistake = word_lower[:-len(original)] + replacement
-            tempting_mistakes.add(mistake)
-    
-    # 5. Phonetic mistakes (letters that sound similar)
-    phonetic_confusions = [
-        ('c', 'k'), ('k', 'c'),  # cat/kat, keep/ceep
-        ('s', 'c'), ('c', 's'),  # since/cinse, cycle/sycel
-        ('f', 'ph'), ('ph', 'f'),  # phone/fone, fun/phun
-        ('j', 'g'), ('g', 'j'),   # judge/gudge, gem/jem
-        ('z', 's'), ('s', 'z'),   # please/pleaze, rise/rize
-        ('x', 'cs'), ('cs', 'x'), # excellent/ecsellent
-    ]
-    
-    for original, replacement in phonetic_confusions:
-        if original in word_lower:
-            mistake = word_lower.replace(original, replacement, 1)
-            if mistake != word_lower:
-                tempting_mistakes.add(mistake)
-    
-    # 6. Letter transposition (swapping adjacent letters)
-    if len(word_lower) > 2:
-        for i in range(len(word_lower) - 1):
-            if word_lower[i] != word_lower[i + 1]: # Avoid swapping identical letters
-                mistake_list = list(word_lower)
-                mistake_list[i], mistake_list[i+1] = mistake_list[i+1], mistake_list[i]
-                tempting_mistakes.add("".join(mistake_list))
-    
-    # Convert set to list, ensuring no duplicate of the correct word
-    tempting_mistakes = list(tempting_mistakes - {word_lower}) # Remove the correct word if it ended up in mistakes
-
-    # Ensure we have enough unique and distinct tempting mistakes
-    final_options = [word] 
-    
-    # Prioritize shorter, more common errors
-    tempting_mistakes_sorted = sorted(list(tempting_mistakes), key=lambda x: (abs(len(x) - len(word_lower)), x))
-
-    for mistake in tempting_mistakes_sorted:
-        if len(final_options) < 4:
-            # Check for high similarity to the correct word (e.g., Levenshtein distance)
-            # A simple way for now: ensure it's not too different in length or character count
-            if abs(len(mistake) - len(word_lower)) <= 2: # Max 2 chars diff
-                final_options.append(mistake)
+    # If we don't have enough misspellings, add some generic ones
+    while len(options) < 4:
+        if len(word) > 3:
+            # Add common suffix confusion
+            if word.endswith('tion'):
+                options.append(word.replace('tion', 'sion'))
+            elif word.endswith('able'):
+                options.append(word.replace('able', 'ible'))
+            elif 'ei' in word:
+                options.append(word.replace('ei', 'ie'))
+            else:
+                # Generic letter swap
+                pos = random.randint(1, len(word) - 2)
+                generic_mistake = word[:pos] + word[pos+1] + word[pos] + word[pos+2:]
+                options.append(generic_mistake)
         else:
-            break
-            
-    # Fallback to generic mistakes if still not enough unique tempting options
-    while len(final_options) < 4:
-        new_mistake = ""
-        if len(word_lower) > 2:
-            # Simple letter deletion or insertion
-            if random.random() < 0.5: # Deletion
-                idx = random.randint(0, len(word_lower) - 1)
-                new_mistake = word_lower[:idx] + word_lower[idx+1:]
-            else: # Insertion
-                idx = random.randint(0, len(word_lower))
-                new_mistake = word_lower[:idx] + random.choice('aeiou') + word_lower[idx:]
-        else: # For very short words, just add/remove a letter
-            new_mistake = word_lower + random.choice('s') if random.random() < 0.5 else word_lower[:-1]
-        
-        if new_mistake and new_mistake != word_lower and new_mistake not in final_options:
-            final_options.append(new_mistake)
-
-    random.shuffle(final_options)
+            options.append(word + random.choice(['e', 's', 'ed']))
+    
+    # Shuffle options but keep track of correct answer
+    random.shuffle(options)
     
     return {
         "correct": word,
-        "options": final_options[:4]
+        "options": options[:4]
     }
 
 def generate_suffix_completion(word: str) -> Dict[str, Any]:
@@ -260,12 +204,10 @@ def generate_suffix_completion(word: str) -> Dict[str, Any]:
     prompt = f"""Create a suffix completion challenge for the word "{word}".
 The base word is "{base_word}" and the correct suffix is "{correct_suffix}".
 
-Generate 3 very tempting misspellings of the correct suffix that humans would commonly confuse:
-- Make them sound identical or very similar when spoken
-- Use common spelling mistakes for this specific suffix
-- Make them look plausible and realistic
-
-For example, if the correct suffix is "ful", wrong options could be "full", "fole", "fule"
+Generate 3 confusing but plausible suffix options that could trick players:
+- Use common suffix confusions: -tion/-sion, -able/-ible, -ous/-ious, -ent/-ant
+- Make them phonetically similar or commonly confused
+- Ensure they sound reasonable with the base word
 
 Return ONLY the suffix options, not complete words.
 
@@ -273,7 +215,7 @@ Respond with ONLY valid JSON in this exact format:
 {{
     "base_word": "{base_word}",
     "correct_suffix": "{correct_suffix}",
-    "options": ["{correct_suffix}", "tempting_misspelling1", "tempting_misspelling2", "tempting_misspelling3"]
+    "options": ["{correct_suffix}", "confusing_suffix1", "confusing_suffix2", "confusing_suffix3"]
 }}
 
 Do not include any other text or explanations."""
@@ -283,142 +225,84 @@ Do not include any other text or explanations."""
         try:
             cleaned_response = response.strip()
             if cleaned_response.startswith('```'):
-                cleaned_response = cleaned_response.replace('``````', '')
+                cleaned_response = cleaned_response.replace('```json', '').replace('```', '')
             
             result = json.loads(cleaned_response)
             # Ensure we only return suffixes, not full words
-            # This logic needs to be careful, as the LLM might return full words if not prompted precisely enough.
-            # Assuming the prompt guides it to return suffixes, we just ensure they are strings.
-            # No need for this complex opt.startswith(base_word) if prompt is followed.
+            result['options'] = [opt if not opt.startswith(base_word) else opt[len(base_word):] for opt in result['options']]
             return result
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error for suffix completion '{word}': {e}")
             logger.error(f"Response was: {response}")
 
     
-    # Enhanced fallback with more tempting, human-like mistakes
-    confusing_suffixes = set() # Use set to handle duplicates
+    # Enhanced fallback with confusing suffixes
+    confusing_suffixes = []
     
-    # Create very tempting misspellings based on the actual suffix
-    if correct_suffix == 'ful':
-        confusing_suffixes.update(['full', 'fole', 'fule'])
-    elif correct_suffix == 'tion':
-        confusing_suffixes.update(['sion', 'shun', 'tian'])
-    elif correct_suffix == 'sion':
-        confusing_suffixes.update(['tion', 'shun', 'sian'])
-    elif correct_suffix == 'able':
-        confusing_suffixes.update(['ible', 'abel', 'abul'])
-    elif correct_suffix == 'ible':
-        confusing_suffixes.update(['able', 'ibel', 'ibul'])
-    elif correct_suffix == 'ous':
-        confusing_suffixes.update(['ious', 'eous', 'ouse'])
-    elif correct_suffix == 'ious':
-        confusing_suffixes.update(['ous', 'eous', 'iouse'])
-    elif correct_suffix == 'ly':
-        confusing_suffixes.update(['ley', 'lie', 'lee'])
-    elif correct_suffix == 'ing':
-        confusing_suffixes.update(['eing', 'yng', 'ine'])
-    elif correct_suffix == 'ed':
-        confusing_suffixes.update(['id', 'ead', 'ded'])
-    elif correct_suffix == 'er':
-        confusing_suffixes.update(['or', 'ar', 'ere'])
-    elif correct_suffix == 'or':
-        confusing_suffixes.update(['er', 'ore', 'our'])
-    elif correct_suffix == 'ant':
-        confusing_suffixes.update(['ent', 'andt', 'ante'])
-    elif correct_suffix == 'ent':
-        confusing_suffixes.update(['ant', 'ente', 'emt'])
-    elif correct_suffix == 'ment':
-        confusing_suffixes.update(['mant', 'memt', 'mnet'])
-    elif correct_suffix == 'ness':
-        confusing_suffixes.update(['nes', 'nees', 'niss'])
-    elif correct_suffix == 'less':
-        confusing_suffixes.update(['les', 'lees', 'liss'])
-    elif correct_suffix == 'ward':
-        confusing_suffixes.update(['werd', 'wared', 'werd'])
+    # Common suffix confusions
+    if correct_suffix.endswith('tion'):
+        confusing_suffixes = ['sion', 'cion', 'ation']
+    elif correct_suffix.endswith('sion'):
+        confusing_suffixes = ['tion', 'cion', 'ssion']
+    elif correct_suffix.endswith('able'):
+        confusing_suffixes = ['ible', 'eable', 'uble']
+    elif correct_suffix.endswith('ible'):
+        confusing_suffixes = ['able', 'eable', 'uble']
+    elif correct_suffix.endswith('ous'):
+        confusing_suffixes = ['ious', 'eous', 'uous']
+    elif correct_suffix.endswith('ant'):
+        confusing_suffixes = ['ent', 'int', 'unt']
+    elif correct_suffix.endswith('ent'):
+        confusing_suffixes = ['ant', 'int', 'unt']
+    else:
+        # Generic confusing options
+        confusing_suffixes = ['ing', 'ed', 'er', 'est', 'ly', 'ion']
     
-    # Generic phonetic variations for other suffixes
-    if len(correct_suffix) >= 2:
-        # Swap vowels
-        vowels = 'aeiou'
-        for i, char in enumerate(correct_suffix):
-            if char in vowels:
-                other_vowels = [v for v in vowels if v != char]
-                if other_vowels:
-                    temp_list = list(correct_suffix)
-                    temp_list[i] = random.choice(other_vowels)
-                    confusing_suffixes.add("".join(temp_list))
-        
-        # Add/remove single letter
-        if len(correct_suffix) > 1:
-            confusing_suffixes.add(correct_suffix[:-1])
-        confusing_suffixes.add(correct_suffix + random.choice('aeiou'))
-
-        # Transposition
-        if len(correct_suffix) > 1:
-            idx = random.randint(0, len(correct_suffix) - 2)
-            transposed = list(correct_suffix)
-            transposed[idx], transposed[idx+1] = transposed[idx+1], transposed[idx]
-            confusing_suffixes.add("".join(transposed))
-
-    # Ensure no duplicates with correct suffix
-    confusing_suffixes.discard(correct_suffix)
+    # Filter out suffixes that are too long compared to the correct one
+    confusing_suffixes = [suffix for suffix in confusing_suffixes[:3] if len(suffix) <= len(correct_suffix) + 2]
     
-    final_options = [correct_suffix] + list(confusing_suffixes)[:3]
-    random.shuffle(final_options)
+    # Fill up to 3 options if needed
+    while len(confusing_suffixes) < 3:
+        confusing_suffixes.append(random.choice(['ing', 'ed', 'er', 'ly', 'ion']))
+    
+    options = [correct_suffix] + confusing_suffixes[:3]
+    random.shuffle(options)
     
     return {
         "base_word": base_word,
         "correct_suffix": correct_suffix,
-        "options": final_options[:4]
+        "options": options[:4]
     }
 
 def generate_fill_blanks(word: str) -> Dict[str, Any]:
     """Generate fill in the blanks challenge with exactly 2 consecutive letters"""
     if len(word) < 3:
-        # Fallback for very short words, might need adjustment based on desired behavior
-        # Since the original request specified "exactly 2 consecutive letters",
-        # words shorter than 3 cannot fulfill this.
-        # Here, it blanks the last letter if word is 2 chars, or returns the word if 1 char.
-        blanked_word_short = word[0] + '__' if len(word) == 2 else word
-        missing_letters_short = word[1:] if len(word) == 2 else word # Example: for 'at', missing is 't'
-        
         return {
-            "blanked_word": blanked_word_short,
+            "blanked_word": word,
             "correct_answer": word,
-            "missing_letters": missing_letters_short,
-            "options": [missing_letters_short, "ab", "cd", "ef"][:4] # Provide generic 2-letter combos
+            "missing_letters": word[-1:],
+            "options": [word[-1:], "s", "e", "d"]
         }
     
     # Find the best position for 2 consecutive blanks
     # Prioritize positions that contain common problem areas
-    problem_patterns = ['ie', 'ei', 'ou', 'ea', 'oo', 'ee', 'ss', 'll', 'nn', 'mm', 'tt', 'ch', 'sh', 'th', 'ph']
+    problem_patterns = ['ie', 'ei', 'ou', 'ea', 'oo', 'ee', 'ss', 'll', 'nn', 'mm', 'tt']
     
     # Look for problem patterns first
-    best_position = -1
-    random.shuffle(problem_patterns) # Shuffle to give different patterns a chance
+    best_position = 0
     for pattern in problem_patterns:
-        # Find all occurrences of the pattern
-        starts = [m.start() for m in re.finditer(pattern, word.lower())]
-        # Choose a random start position from valid ones
-        valid_starts = [s for s in starts if s + 2 <= len(word)]
-        if valid_starts:
-            best_position = random.choice(valid_starts)
+        pos = word.lower().find(pattern)
+        if pos != -1 and pos + 2 <= len(word):
+            best_position = pos
             break
     
-    # If no problem patterns found or suitable position, choose a position avoiding start and end
-    if best_position == -1:
+    # If no problem patterns found, choose a position avoiding start and end
+    if best_position == 0:
         if len(word) >= 4:
-            # Blank two letters from middle to avoid start/end, prioritizing non-vowel/vowel combos
-            possible_starts = [i for i in range(1, len(word) - 2)] # Not at very beginning or end
-            if possible_starts:
-                best_position = random.choice(possible_starts)
-            else:
-                best_position = 0 # Fallback for very short words like 3-letter
-        else: # For 3-letter words, blank middle two
-            best_position = 0 if len(word) == 3 else 0 # Should only happen if len(word) < 3 originally
-            
-
+            best_position = random.randint(1, len(word) - 3)
+        else:
+            best_position = 0
+    
     # Create blanked word with exactly 2 consecutive blanks
     blanked_word = word[:best_position] + "__" + word[best_position + 2:]
     missing_letters = word[best_position:best_position + 2].lower()
@@ -426,13 +310,10 @@ def generate_fill_blanks(word: str) -> Dict[str, Any]:
     prompt = f"""Create a fill-in-the-blanks challenge for the word "{word}".
 The blanked version is "{blanked_word}" where the missing letters are "{missing_letters}".
 
-Generate 3 very tempting misspellings of the correct 2-letter combination that humans would commonly confuse:
-- Make them sound identical or very similar when spoken
-- Use common spelling mistakes for these specific letters
-- Make them look plausible and realistic
-
-For example, if correct is "ie", wrong options could be "ei", "ee", "ea"
-If correct is "ou", wrong options could be "ow", "oo", "au"
+Generate 3 tempting but incorrect 2-letter combinations that could plausibly fill the blanks:
+- Use common letter combinations that sound similar
+- Include common misspelling patterns (ei/ie, ou/ow, etc.)
+- Make them phonetically reasonable
 
 Return ONLY the 2-letter combinations, NOT complete words.
 
@@ -441,7 +322,7 @@ Respond with ONLY valid JSON in this exact format:
     "blanked_word": "{blanked_word}",
     "correct_answer": "{word}",
     "missing_letters": "{missing_letters}",
-    "options": ["{missing_letters}", "tempting_combo1", "tempting_combo2", "tempting_combo3"]
+    "options": ["{missing_letters}", "wrong_combo1", "wrong_combo2", "wrong_combo3"]
 }}
 
 Do not include any other text or explanations."""
@@ -450,107 +331,56 @@ Do not include any other text or explanations."""
     if response:
         try:
             cleaned_response = response.strip()
-            if cleaned_response.startswith('```
-                cleaned_response = cleaned_response.replace('```json', '').replace('```
+            if cleaned_response.startswith('```json'):
+                cleaned_response = cleaned_response.replace('```json', '').replace('```', '').strip()
                 
             result = json.loads(cleaned_response)
             # Ensure options are only 2-letter combinations
-            # This assumes the LLM will return 2-letter strings.
-            # No need for this complex opt[:2] if prompt is followed.
+            result['options'] = [opt[:2] if len(opt) >= 2 else opt for opt in result['options']]
             return result
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error for fill blanks '{word}': {e}")
-            logger.error(f"Response was: {response}")
     
-    # Enhanced fallback with very tempting letter combinations
-    confusing_combos = set() # Use a set to manage uniqueness
+    # Enhanced fallback with confusing letter combinations
+    confusing_combos = []
     
-    # Create very tempting misspellings based on the actual missing letters
-    # Prioritize specific common errors
-    common_pairs = {
-        'ie': ['ei', 'ee', 'ea'], 'ei': ['ie', 'ai', 'ee'],
-        'ou': ['ow', 'oo', 'au'], 'ow': ['ou', 'oo', 'aw'],
-        'ea': ['ee', 'ie', 'ai'], 'ee': ['ea', 'ie', 'ei'],
-        'oo': ['ou', 'ow', 'ue'], 'ai': ['ei', 'ay', 'ae'],
-        'ay': ['ai', 'ey', 'ae'], 'ey': ['ay', 'ei', 'ie'],
-        'au': ['aw', 'ou', 'ao'], 'aw': ['au', 'ow', 'ao'],
-        'll': ['le', 'el', 'l'], 'ss': ['se', 'es', 's'],
-        'nn': ['ne', 'en', 'n'], 'mm': ['me', 'em', 'm'],
-        'tt': ['te', 'et', 't'], 'rr': ['re', 'er', 'r'],
-        'ck': ['k', 'ch', 'cc'], 'ch': ['tch', 'sh', 'c'],
-        'sh': ['ch', 'tsch', 'zh'], 'th': ['dh', 'f', 'v'],
-        'ph': ['f', 'gh', 'v']
-    }
-
-    if missing_letters in common_pairs:
-        confusing_combos.update(common_pairs[missing_letters])
+    # Common confusions based on the missing letters
+    if missing_letters == 'ie':
+        confusing_combos = ['ei', 'ea', 'ee']
+    elif missing_letters == 'ei':
+        confusing_combos = ['ie', 'ai', 'ea']
+    elif missing_letters == 'ou':
+        confusing_combos = ['ow', 'oo', 'au']
+    elif missing_letters == 'ea':
+        confusing_combos = ['ee', 'ie', 'ai']
+    elif missing_letters == 'oo':
+        confusing_combos = ['ou', 'ew', 'ue']
     else:
-        # Fallback for less common pairs
-        first_letter = missing_letters
-        second_letter = missing_letters
-
-        # 1. Swap letters if different
-        if first_letter != second_letter:
-            confusing_combos.add(second_letter + first_letter)
-
-        # 2. Change one letter (vowel/consonant swap)
-        vowels = 'aeiou'
-        consonants = 'bcdfghjklmnpqrstvwxyz'
-        
-        # Change first letter
-        if first_letter in vowels:
-            possible_swaps = [v for v in vowels if v != first_letter]
-            if possible_swaps: confusing_combos.add(random.choice(possible_swaps) + second_letter)
-        elif first_letter in consonants:
-            possible_swaps = [c for c in consonants if c != first_letter]
-            if possible_swaps: confusing_combos.add(random.choice(possible_swaps) + second_letter)
-
-        # Change second letter
-        if second_letter in vowels:
-            possible_swaps = [v for v in vowels if v != second_letter]
-            if possible_swaps: confusing_combos.add(first_letter + random.choice(possible_swaps))
-        elif second_letter in consonants:
-            possible_swaps = [c for c in consonants if c != second_letter]
-            if possible_swaps: confusing_combos.add(first_letter + random.choice(possible_swaps))
-
-        # 3. Double one of the letters if not already double
-        if first_letter != second_letter:
-            confusing_combos.add(first_letter * 2)
-            confusing_combos.add(second_letter * 2)
-        
-        # 4. Add a common third letter and truncate
-        if len(missing_letters) == 2:
-            confusing_combos.add(missing_letters + random.choice(vowels))
-            confusing_combos.add(random.choice(vowels) + missing_letters)
-
-    # Ensure all generated combos are exactly 2 characters and not the correct answer
-    confusing_combos_filtered = {c for c in confusing_combos if len(c) == 2 and c != missing_letters}
-
-    # Populate options, ensuring 3 unique tempting alternatives
-    final_options = [missing_letters]
-    for combo in list(confusing_combos_filtered): # Convert to list to iterate
-        if len(final_options) < 4:
-            final_options.append(combo)
-        else:
-            break
-            
-    # If still not enough, generate more generic but valid 2-letter combos
-    all_possible_two_letter_combos = [a+b for a in 'abcdefghijklmnopqrstuvwxyz' for b in 'abcdefghijklmnopqrstuvwxyz']
-    random.shuffle(all_possible_two_letter_combos)
+        # Generic confusing combinations
+        vowels = ['a', 'e', 'i', 'o', 'u']
+        consonants = ['n', 's', 't', 'r', 'l']
+        confusing_combos = [
+            random.choice(vowels) + random.choice(vowels),
+            random.choice(consonants) + random.choice(consonants),
+            random.choice(vowels) + random.choice(consonants)
+        ]
     
-    for combo in all_possible_two_letter_combos:
-        if len(final_options) < 4 and combo not in final_options:
-            final_options.append(combo)
-        elif len(final_options) == 4:
-            break
-
-    random.shuffle(final_options)
+    # Ensure all combinations are exactly 2 letters
+    confusing_combos = [combo[:2] for combo in confusing_combos if len(combo) >= 2][:3]
+    
+    # Fill up if needed
+    while len(confusing_combos) < 3:
+        confusing_combos.append(random.choice(['ai', 'ou', 'ee', 'oo', 'ar', 'er']))
+    
+    # Return only the letter combinations, not full words
+    options = [missing_letters] + confusing_combos[:3]
+    random.shuffle(options)
     
     return {
         "blanked_word": blanked_word,
         "correct_answer": word,
         "missing_letters": missing_letters,
-        "options": final_options[:4]
+        "options": options[:4]
     }
 
 
@@ -576,76 +406,40 @@ Do not include any other text or explanations."""
         try:
             cleaned_response = response.strip()
             if cleaned_response.startswith('```json'):
-                cleaned_response = cleaned_response.replace('``````', '').strip()
+                cleaned_response = cleaned_response.replace('```json', '').replace('```', '').strip()
                 
             return json.loads(cleaned_response)
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error for error detection '{word}': {e}")
-            logger.error(f"Response was: {response}")
     
     # Enhanced fallback with subtle mistakes
     word_lower = word.lower()
-    misspelled = ""
     
-    # Try different types of subtle mistakes (prioritized for realism)
-    # 1. ei/ie confusion
+    # Try different types of subtle mistakes
     if 'ie' in word_lower:
         misspelled = word_lower.replace('ie', 'ei', 1)
     elif 'ei' in word_lower:
         misspelled = word_lower.replace('ei', 'ie', 1)
-    
-    # 2. Common double letter errors (remove one or add one)
-    if not misspelled:
-        for i in range(len(word_lower) - 1):
-            if word_lower[i] == word_lower[i + 1]: # Remove a double letter
-                misspelled = word_lower[:i] + word_lower[i + 1:]
-                break
-            elif i < len(word_lower) - 2: # Add a double letter (e.g., comittee -> committee)
-                if word_lower[i+1] == word_lower[i+2]: # if next two are same, try adding one of current
-                    misspelled = word_lower[:i+1] + word_lower[i+1] + word_lower[i+1:]
-                    break
-        
-    # 3. Silent letter errors (e.g., removing 'k' from 'knife', adding 'e' to 'recieve')
-    if not misspelled and len(word_lower) > 3:
-        if 'kn' in word_lower:
-            misspelled = word_lower.replace('kn', 'n', 1)
-        elif 'gh' in word_lower:
-            misspelled = word_lower.replace('gh', 'g', 1)
-        elif not word_lower.endswith('e') and random.random() < 0.5:
-             misspelled = word_lower + 'e'
-        elif word_lower.endswith('e') and random.random() < 0.5 and len(word_lower) > 3:
-            misspelled = word_lower[:-1]
-
-    # 4. Vowel confusion (e.g., 'a' for 'e' in 'separate')
-    if not misspelled:
-        vowel_swaps_subtle = [('a', 'e'), ('e', 'a'), ('o', 'u'), ('u', 'o')]
-        for original, replacement in vowel_swaps_subtle:
-            if original in word_lower:
-                temp_misspelled = word_lower.replace(original, replacement, 1)
-                if temp_misspelled != word_lower and len(temp_misspelled) == len(word_lower):
-                    misspelled = temp_misspelled
-                    break
-
-    # 5. Simple transposition (swapping two adjacent letters)
-    if not misspelled and len(word_lower) > 2:
-        idx = random.randint(0, len(word_lower) - 2)
-        misspelled_list = list(word_lower)
-        misspelled_list[idx], misspelled_list[idx+1] = misspelled_list[idx+1], misspelled_list[idx]
-        misspelled = "".join(misspelled_list)
-        
-    # Final fallback if no subtle mistake was generated
-    if not misspelled or misspelled == word_lower:
-        if len(word_lower) > 3:
-            pos = random.randint(1, len(word_lower) - 2)
-            misspelled = word_lower[:pos] + random.choice('aeiou') + word_lower[pos + 1:] # Change a middle letter
+    elif len(word) > 4 and word_lower[-2:] in ['ed', 'er', 'ly']:
+        # Double the last consonant before suffix
+        base = word_lower[:-2]
+        suffix = word_lower[-2:]
+        if base and base[-1] not in 'aeiou':
+            misspelled = base + base[-1] + suffix
         else:
-            misspelled = word_lower + random.choice('s') # Append a letter
-
+            misspelled = word_lower.replace('e', 'i', 1)
+    else:
+        # Generic subtle mistake - swap adjacent letters
+        if len(word) > 3:
+            pos = len(word) // 2
+            misspelled = word_lower[:pos] + word_lower[pos+1] + word_lower[pos] + word_lower[pos+2:]
+        else:
+            misspelled = word_lower.replace(word_lower[0], word_lower[0] + 'h', 1)
+    
     return {
         "original_word": word,
-        "misspelled_word": misspelled
+        "misspelled_word": misspelled if misspelled != word_lower else word_lower + 'e'
     }
-
 
 def generate_guided_completion(word: str) -> Dict[str, Any]:
     """Generate guided word completion challenge with strategic blanks"""
@@ -676,8 +470,8 @@ Do not include any other text or explanations."""
     if response:
         try:
             cleaned_response = response.strip()
-            if cleaned_response.startswith('```
-                cleaned_response = cleaned_response.replace('```json', '').replace('```
+            if cleaned_response.startswith('```'):
+                cleaned_response = cleaned_response.replace('```json', '').replace('```', '')
             
             return json.loads(cleaned_response)
         except json.JSONDecodeError as e:
@@ -687,7 +481,7 @@ Do not include any other text or explanations."""
     
     # Enhanced fallback with better hints
     hints = [
-        f"This {len(word)}-letter word starts with '{word}' and ends with '{word[-1]}'",
+        f"This {len(word)}-letter word starts with '{word[0]}' and ends with '{word[-1]}'",
         f"A word that rhymes with '{word[:-1]}e'",
         f"This word contains {len([c for c in word if c in 'aeiou'])} vowel(s)",
         f"Think of a word related to the pattern '{word[:2]}...{word[-2:]}'"
