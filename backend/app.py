@@ -209,6 +209,8 @@ Generate 3 confusing but plausible suffix options that could trick players:
 - Make them phonetically similar or commonly confused
 - Ensure they sound reasonable with the base word
 
+Return ONLY the suffix options, not complete words.
+
 Respond with ONLY valid JSON in this exact format:
 {{
     "base_word": "{base_word}",
@@ -225,7 +227,10 @@ Do not include any other text or explanations."""
             if cleaned_response.startswith('```'):
                 cleaned_response = cleaned_response.replace('```json', '').replace('```', '')
             
-            return json.loads(cleaned_response)
+            result = json.loads(cleaned_response)
+            # Ensure we only return suffixes, not full words
+            result['options'] = [opt if not opt.startswith(base_word) else opt[len(base_word):] for opt in result['options']]
+            return result
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error for suffix completion '{word}': {e}")
             logger.error(f"Response was: {response}")
@@ -252,6 +257,13 @@ Do not include any other text or explanations."""
     else:
         # Generic confusing options
         confusing_suffixes = ['ing', 'ed', 'er', 'est', 'ly', 'ion']
+    
+    # Filter out suffixes that are too long compared to the correct one
+    confusing_suffixes = [suffix for suffix in confusing_suffixes[:3] if len(suffix) <= len(correct_suffix) + 2]
+    
+    # Fill up to 3 options if needed
+    while len(confusing_suffixes) < 3:
+        confusing_suffixes.append(random.choice(['ing', 'ed', 'er', 'ly', 'ion']))
     
     options = [correct_suffix] + confusing_suffixes[:3]
     random.shuffle(options)
@@ -303,6 +315,8 @@ Generate 3 tempting but incorrect 2-letter combinations that could plausibly fil
 - Include common misspelling patterns (ei/ie, ou/ow, etc.)
 - Make them phonetically reasonable
 
+Return ONLY the 2-letter combinations, NOT complete words.
+
 Respond with ONLY valid JSON in this exact format:
 {{
     "blanked_word": "{blanked_word}",
@@ -318,10 +332,11 @@ Do not include any other text or explanations."""
         try:
             cleaned_response = response.strip()
             if cleaned_response.startswith('```json'):
-                cleaned_response = cleaned_response.replace('``````', '').strip()
+                cleaned_response = cleaned_response.replace('```json', '').replace('```', '').strip()
                 
             result = json.loads(cleaned_response)
-            # Keep only the letter combinations, not full words
+            # Ensure options are only 2-letter combinations
+            result['options'] = [opt[:2] if len(opt) >= 2 else opt for opt in result['options']]
             return result
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error for fill blanks '{word}': {e}")
@@ -349,6 +364,13 @@ Do not include any other text or explanations."""
             random.choice(consonants) + random.choice(consonants),
             random.choice(vowels) + random.choice(consonants)
         ]
+    
+    # Ensure all combinations are exactly 2 letters
+    confusing_combos = [combo[:2] for combo in confusing_combos if len(combo) >= 2][:3]
+    
+    # Fill up if needed
+    while len(confusing_combos) < 3:
+        confusing_combos.append(random.choice(['ai', 'ou', 'ee', 'oo', 'ar', 'er']))
     
     # Return only the letter combinations, not full words
     options = [missing_letters] + confusing_combos[:3]
@@ -384,7 +406,7 @@ Do not include any other text or explanations."""
         try:
             cleaned_response = response.strip()
             if cleaned_response.startswith('```json'):
-                cleaned_response = cleaned_response.replace('``````', '').strip()
+                cleaned_response = cleaned_response.replace('```json', '').replace('```', '').strip()
                 
             return json.loads(cleaned_response)
         except json.JSONDecodeError as e:
@@ -459,7 +481,7 @@ Do not include any other text or explanations."""
     
     # Enhanced fallback with better hints
     hints = [
-        f"This {len(word)}-letter word starts with '{word}' and ends with '{word[-1]}'",
+        f"This {len(word)}-letter word starts with '{word[0]}' and ends with '{word[-1]}'",
         f"A word that rhymes with '{word[:-1]}e'",
         f"This word contains {len([c for c in word if c in 'aeiou'])} vowel(s)",
         f"Think of a word related to the pattern '{word[:2]}...{word[-2:]}'"
