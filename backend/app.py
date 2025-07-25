@@ -213,7 +213,7 @@ Respond with ONLY valid JSON in this exact format:
 {{
     "base_word": "{base_word}",
     "correct_suffix": "{correct_suffix}",
-    "options": ["correct_suffix", "confusing_suffix1", "confusing_suffix2", "confusing_suffix3"]
+    "options": ["{correct_suffix}", "confusing_suffix1", "confusing_suffix2", "confusing_suffix3"]
 }}
 
 Do not include any other text or explanations."""
@@ -222,12 +222,14 @@ Do not include any other text or explanations."""
     if response:
         try:
             cleaned_response = response.strip()
-            if cleaned_response.startswith('```json'):
-                cleaned_response = cleaned_response.replace('``````', '').strip()
-                
+            if cleaned_response.startswith('```'):
+                cleaned_response = cleaned_response.replace('```json', '').replace('```', '')
+            
             return json.loads(cleaned_response)
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error for suffix completion '{word}': {e}")
+            logger.error(f"Response was: {response}")
+
     
     # Enhanced fallback with confusing suffixes
     confusing_suffixes = []
@@ -238,7 +240,7 @@ Do not include any other text or explanations."""
     elif correct_suffix.endswith('sion'):
         confusing_suffixes = ['tion', 'cion', 'ssion']
     elif correct_suffix.endswith('able'):
-        confusing_suffixes = ['ible', 'eable', 'able']
+        confusing_suffixes = ['ible', 'eable', 'uble']
     elif correct_suffix.endswith('ible'):
         confusing_suffixes = ['able', 'eable', 'uble']
     elif correct_suffix.endswith('ous'):
@@ -266,7 +268,8 @@ def generate_fill_blanks(word: str) -> Dict[str, Any]:
         return {
             "blanked_word": word,
             "correct_answer": word,
-            "options": [word, word + "s", word + "e", word + "d"]
+            "missing_letters": word[-1:],
+            "options": [word[-1:], "s", "e", "d"]
         }
     
     # Find the best position for 2 consecutive blanks
@@ -314,25 +317,15 @@ Do not include any other text or explanations."""
     if response:
         try:
             cleaned_response = response.strip()
-            if cleaned_response.startswith('```'):
-                cleaned_response = cleaned_response.replace('```json', '').replace('```', '')
-            
+            if cleaned_response.startswith('```json'):
+                cleaned_response = cleaned_response.replace('``````', '').strip()
+                
             result = json.loads(cleaned_response)
-            
-            # Rebuild full word options from the letter combinations
-            if 'options' in result:
-                full_options = []
-                for combo in result['options']:
-                    if len(combo) == 2:
-                        full_word = word[:best_position] + combo + word[best_position + 2:]
-                        full_options.append(full_word)
-                result['options'] = full_options
-            
+            # Keep only the letter combinations, not full words
             return result
         except json.JSONDecodeError as e:
             logger.error(f"JSON decode error for fill blanks '{word}': {e}")
-            logger.error(f"Response was: {response}")
-
+    
     # Enhanced fallback with confusing letter combinations
     confusing_combos = []
     
@@ -357,12 +350,8 @@ Do not include any other text or explanations."""
             random.choice(vowels) + random.choice(consonants)
         ]
     
-    # Create full word options
-    options = [word]
-    for combo in confusing_combos[:3]:
-        wrong_word = word[:best_position] + combo + word[best_position + 2:]
-        options.append(wrong_word)
-    
+    # Return only the letter combinations, not full words
+    options = [missing_letters] + confusing_combos[:3]
     random.shuffle(options)
     
     return {
@@ -371,6 +360,7 @@ Do not include any other text or explanations."""
         "missing_letters": missing_letters,
         "options": options[:4]
     }
+
 
 def generate_error_detection(word: str) -> Dict[str, Any]:
     """Generate error detection challenge with subtle, tempting mistakes"""
