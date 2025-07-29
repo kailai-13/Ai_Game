@@ -1,13 +1,30 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="scroll-smooth bg-gray-50 text-gray-900">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React</title>
+
+    <!-- Primary Meta Tags -->
+    <title>AI Game | Powered by Vite + React + Tailwind</title>
+    <meta name="title" content="AI Game | Powered by Vite + React + Tailwind" />
+    <meta name="description" content="An AI-powered game built with React, Vite, and Tailwind CSS. Enjoy fast performance and clean UI!" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+
+    <!-- Tailwind Preload (optional performance boost) -->
+    <link rel="preload" as="style" href="/src/index.css" />
+
+    <!-- Fonts (Optional) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+
+    <!-- Theme Color for PWA/Android -->
+    <meta name="theme-color" content="#0f172a" />
   </head>
-  <body>
+  <body class="min-h-screen font-sans antialiased">
     <div id="root"></div>
+
+    <!-- Main App -->
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

@@ -10,7 +10,7 @@ const GAME_TYPES = [
 ];
 
 // Real API configuration
-const API_BASE_URL = 'http://localhost:5000'; // Change this to your actual backend URL
+const API_BASE_URL = 'https://ai-game-backend.onrender.com'; // Change this to your actual backend URL
 
 // Real API function to generate all games
 const generateGames = async (words) => {
